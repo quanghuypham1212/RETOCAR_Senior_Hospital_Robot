@@ -8,7 +8,17 @@
 #ifndef SRC_MOTOR_HPP_
 #define SRC_MOTOR_HPP_
 
-class motor {
+#ifdef __cplusplus
+extern "C" {
+#endif
+#include "main.h" // Thư viện HAL
+#ifdef __cplusplus
+}
+
+#endif
+class motor { 
+private:
+
 public:
 	motor();
 	virtual ~motor();
