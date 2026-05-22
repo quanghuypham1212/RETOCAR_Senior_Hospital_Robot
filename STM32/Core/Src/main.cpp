@@ -18,16 +18,31 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "cmsis_os.h"
 #include "usb_device.h"
+#include "usbd_cdc_if.h"
 #include "motor.hpp"
 #include "Encoder.hpp"
 #include "Pid.hpp"
 #include "robotcontroller.hpp"
+#include "Servo.hpp"
+#include "Batery.hpp"
+#include "Acs712.hpp"
+#include "Tft.hpp"
+#include "usb_ring_buffer.hpp"
+#include "Odometry.hpp"
+#include "Imu.hpp"
+#include "Button.hpp"
+#include "buzzer.h"
+#include "task_mission.hpp"
+#include "task_comm.hpp"
+#include "task_motor.hpp"
+#include "task_comm_trans.hpp"
+#include "filter_imu.hpp"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#define PCA9685_MODE1 0x00
-#define PCA9685_PRESCALE 0xFE
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,6 +62,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
+DMA_HandleTypeDef hdma_adc1;
 I2C_HandleTypeDef hi2c1;
 SPI_HandleTypeDef hspi1;
 TIM_HandleTypeDef htim1;
@@ -55,28 +71,70 @@ TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim10;
 UART_HandleTypeDef huart2;
 
+/* Definitions for Motor_Task */
+osThreadId_t Motor_TaskHandle;
+const osThreadAttr_t Motor_Task_attributes = {
+  .name = "Motor_Task",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityHigh,
+};
+/* Definitions for Comm_Task */
+osThreadId_t Comm_TaskHandle;
+const osThreadAttr_t Comm_Task_attributes = {
+  .name = "Comm_Task",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityAboveNormal,
+};
+/* Definitions for Mission_Task */
+osThreadId_t Mission_TaskHandle;
+const osThreadAttr_t Mission_Task_attributes = {
+  .name = "Mission_Task",
+  .stack_size = 1024 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+/* Definitions for Health_Task */
+osThreadId_t Health_TaskHandle;
+const osThreadAttr_t Health_Task_attributes = {
+  .name = "Health_Task",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
 /* USER CODE BEGIN PV */
-// uint8_t pca_addr = 0xAA;
-// HAL_StatusTypeDef test_status;
-// uint32_t encoder1_count = 0 ;
-// uint32_t encoder2_count = 0 ;
-// uint8_t btn_rst = 1;
-// uint8_t btn_conf = 1;
-volatile int32_t debug_deltaL = 0;
-volatile int32_t debug_deltaR = 0;
-volatile int32_t total_pulseL = 0; // Biến giữ tổng số xung
-volatile int32_t total_pulseR = 0;
-
-volatile float actual_velocityL = 0.0f, actual_velocityR = 0.0f; // Vận tốc thực tế tính từ encoder
-volatile float final_target_left = 0.0f, final_target_right = 0.0f; // Biến mục tiêu cuối cùng sau khi áp dụng giới hạn gia tốc
-volatile float current_target_left = 0.0f, current_target_right = 0.0f; 
-volatile float filtered_actualL = 0.0f, filtered_actualR = 0.0f; // Biến lưu giá trị thực tế đã qua lọc
+ImuFilter imuFilter(0.01f, 0.998f); // Khởi tạo bộ lọc IMU với dt=10ms và alpha=0.98
+RingBuffer usbBuffer; // Khởi tạo vòng đệm USB với kích thước 256 byte
+Button btn_conf(GPIOB, GPIO_PIN_10, 50); // Khởi tạo nút cấu hình
+Buzzer buzzer(GPIOB, GPIO_PIN_3); // Khởi tạo buzzer
+ServoController servo(&hi2c1, (0x40 << 1));
+// volatile bool btn_conf_state = false; // Biến trạng thái cấu hình
 RobotController myRobot;
-/* USER CODE END PV */
+// Odometry odometry;
+TFT_Display tft(&hspi1, GPIOA, GPIO_PIN_10, GPIOB, GPIO_PIN_0, GPIOB, GPIO_PIN_1); // Khởi tạo TFT với chân CS, DC, RST
+Imu imu(&hi2c1); // Khởi tạo IMU
+volatile uint16_t adc_buffer[3] = {0}; // Buffer DMA cho 3 kênh ADC
+Battery robot_batery(NULL, 12.0f, 0.0f, 4.1f);
+// CurrentSensor Motor_right(&adc_buffer[1], 0.1f, 1.6667f);
+// CurrentSensor Motor_left(&adc_buffer[2], 0.1f, 1.6667f);
+// volatile float cur_right = 0;
+// volatile float cur_left = 0;
+
+Compartment compartment[4] = {
+    Compartment(1, &servo, &btn_conf, &buzzer, &tft),
+    Compartment(2, &servo, &btn_conf, &buzzer, &tft),
+    Compartment(3, &servo, &btn_conf, &buzzer, &tft),
+    Compartment(4, &servo, &btn_conf, &buzzer, &tft)
+};
+
+float targetVx = 0.0f;
+float targetWz = 0.0f;
+UartParser uartParser(&usbBuffer, compartment, &targetVx, &targetWz); // Khởi tạo parser với vòng đệm và mảng ngăn thuốc
+TaskMotor myMotorTask;
+Telemetry telemetry;
+
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_SPI1_Init(void);
@@ -85,52 +143,38 @@ static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_TIM10_Init(void);
 static void MX_USART2_UART_Init(void);
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void StartMotorTask(void *argument);
+void StartCommTask(void *argument);
+void StartMissionTask(void *argument);
+void StartHealthTask(void *argument);
+
+#ifdef __cplusplus
+}
+#endif
 /* USER CODE BEGIN PFP */
-// void TFT_WriteCommand(uint8_t cmd);
-// void TFT_WriteData(uint8_t data);
-// void PCA9685_Init_50Hz(void);
-//void PCA9685_SetServoAngle(uint8_t channel, uint16_t value);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-// void PCA9685_Init_50Hz(void) {
-//     uint8_t data;
+// void I2C_Scan_To_Array(I2C_HandleTypeDef *hi2c) {
+//     devices_count = 0;
+//     // Xóa dữ liệu cũ trong mảng
+//     for(int i=0; i<10; i++) i2c_addresses[i] = 0;
 
-//     // 1. Reset chip hoàn toàn
-//     data = 0x80;
-//     HAL_I2C_Mem_Write(&hi2c1, 0x80, 0x00, 1, &data, 1, 100);
-//     HAL_Delay(50);
-
-//     // 2. Cho chip ngủ để cài Prescale
-//     data = 0x10;
-//     HAL_I2C_Mem_Write(&hi2c1, 0x80, 0x00, 1, &data, 1, 100);
-
-//     // 3. Cài 50Hz (Prescale = 121)
-//     data = 121;
-//     HAL_I2C_Mem_Write(&hi2c1, 0x80, 0xFE, 1, &data, 1, 100);
-
-//     // 4. Thức dậy và cho phép Restart
-//     data = 0xA1; // 0xA1 = 1010 0001 (Restart + Auto-Increment + AllCall)
-//     HAL_I2C_Mem_Write(&hi2c1, 0x80, 0x00, 1, &data, 1, 100);
-//     HAL_Delay(5);
+//     for (uint16_t i = 1; i < 128; i++) {
+//         // Kiểm tra thiết bị
+//         if (HAL_I2C_IsDeviceReady(hi2c, (uint16_t)(i << 1), 3, 5) == HAL_OK) {
+//             if (devices_count < 10) {
+//                 i2c_addresses[devices_count] = (uint8_t)i; // Lưu địa chỉ 7-bit
+//                 devices_count++;
+//             }
+//         }
+//     }
 // }
-
-// void PCA9685_SetServoAngle(uint8_t channel, uint16_t value) {
-//     // channel: 0 đến 15
-//     // value: 102 (0 độ) đến 512 (180 độ)
-
-//     uint8_t buf[4];
-//     buf[0] = 0x00; // ON Low (Bật ở vạch 0)
-//     buf[1] = 0x00; // ON High
-//     buf[2] = value & 0xFF; // OFF Low (Tắt ở vạch 'value')
-//     buf[3] = value >> 8;   // OFF High
-
-//     // Ghi vào địa chỉ thanh ghi của chân tương ứng
-//     // Công thức: 0x06 (LED0) + 4 * số kênh
-//     HAL_I2C_Mem_Write(&hi2c1,(0x40 << 1), 0x06 + (4 * channel), 1, buf, 4, 100);
-// }
-
 /* USER CODE END 0 */
 
 /**
@@ -146,10 +190,9 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
+HAL_Init();
 
   /* USER CODE BEGIN Init */
-
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -161,6 +204,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_ADC1_Init();
   MX_I2C1_Init();
   MX_SPI1_Init();
@@ -171,172 +215,126 @@ int main(void)
   MX_USB_DEVICE_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
+  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
+  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 0);
   HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL); // Bắt đầu Encoder R
   HAL_TIM_Encoder_Start(&htim4, TIM_CHANNEL_ALL); // Bắt đầu Encoder L
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
+  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_buffer, 3); // Bắt đầu ADC với DMA cho 3 kênh
+  // Motor_right.calibrate();
+  // Motor_left.calibrate();
+  tft.init();
+  imu.init();
+  servo.init();
+  servo.stopPWM(0);
+  servo.stopPWM(1);
+  servo.stopPWM(2);
+  servo.stopPWM(3);
+  tft.Idle();
+//HAL_TIM_Base_Start_IT(&htim10); // Bật ngắt định kỳ 20ms để đọc encoder và điều khiển PID
 
-    // Đọc địa chỉ I2C
-//    for (uint16_t i = 0; i < 128; i++) {
-//         test_status = HAL_I2C_IsDeviceReady(&hi2c1, (i << 1), 3, 10);
-//         if (test_status == HAL_OK) {
-//             pca_addr = i;
-//         }
-//     }
+    //HAL_Delay(1000);
+  osKernelInitialize();
+  /* Create the thread(s) */
+  /* creation of Motor_Task */
+ Motor_TaskHandle = osThreadNew(StartMotorTask, NULL, &Motor_Task_attributes);
 
-//    PCA9685_SetServoAngle(0, 512);
-//    PCA9685_SetServoAngle(1, 512);
-//    PCA9685_SetServoAngle(2, 512);
-//    PCA9685_SetServoAngle(3, 512);
-//    HAL_Delay(2000);
-//    PCA9685_SetServoAngle(0, 307);
-//    PCA9685_SetServoAngle(1, 307);
-//    PCA9685_SetServoAngle(2, 307);
-//    PCA9685_SetServoAngle(3, 307);
-//    HAL_Delay(2000);
-//    PCA9685_SetServoAngle(0, 102);
-//    PCA9685_SetServoAngle(1, 102);
-//    PCA9685_SetServoAngle(2, 102);
-//    PCA9685_SetServoAngle(3, 102);
-   // Đọc encoder
-    // encoder1_count = (uint32_t)__HAL_TIM_GET_COUNTER(&htim1);
-    // encoder2_count = __HAL_TIM_GET_COUNTER(&htim4);
-
-
-     //2. Thiết lập hướng quay TIẾN cho cả 2 động cơ
-     //Động cơ A (PB12, PB13)
-//    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_SET);
-//    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_RESET);
-    // Động cơ B (PB14, PB15)
-//    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_14, GPIO_PIN_SET);
-//    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_RESET);
-
-    // 3. Vòng lặp tăng tốc dần từ 0% đến 100% (mỗi bước 10%)
-//    for (int i = 0; i <= 10; i++) {
-//        uint32_t duty_value = (i * 65535) / 10; // Tính toán giá trị PWM
-
-//        __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 65535);
-        //__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 65535);
+ /* creation of Comm_Task */
+ Comm_TaskHandle = osThreadNew(StartCommTask, NULL, &Comm_Task_attributes);
 //
-//        //HAL_Delay(1000); // Đợi 1 giây ở mỗi mức tốc độ
-//    //}
+//  /* creation of Mission_Task */
+ Mission_TaskHandle = osThreadNew(StartMissionTask, NULL, &Mission_Task_attributes);
 //
-    // 4. Giữ tốc độ tối đa trong 2 giây
-//    HAL_Delay(5000);
+//  /* creation of Health_Task */
+ Health_TaskHandle = osThreadNew(StartHealthTask, NULL, &Health_Task_attributes);
+
+//  /* USER CODE BEGIN RTOS_THREADS */
+//  /* add threads, ... */
+//  /* USER CODE END RTOS_THREADS */
 //
-//    // 5. DỪNG HẲN CẢ 2 ĐỘNG CƠ
-//    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 0);
-//    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 0);
+//  /* USER CODE BEGIN RTOS_EVENTS */
+//  /* add events, ... */
+//  /* USER CODE END RTOS_EVENTS */
 //
-//    // Đưa tất cả chân hướng về 0 (Thả trôi bánh xe)
-//    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15, GPIO_PIN_RESET);
-//
-//    // Tắt PWM để tiết kiệm năng lượng
-//    HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
-//    HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_2);
-
-    // Test màn hình
-    /* USER CODE BEGIN 2 */
-    // HAL_Delay(500);
-
-    //     // Đảm bảo các chân ở trạng thái nghỉ
-    //     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, 1); // CS = 1 (Tạm ngắt)
-    //     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, 1);  // RES = 1
-    //     HAL_Delay(100);
-
-    //     // Bắt đầu quy trình Reset cứng
-    //     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, 0); // RES = 0 (Bắt đầu Reset)
-    //     HAL_Delay(200);                          // Giữ 200ms cho chắc
-    //     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, 1); // RES = 1 (Thả Reset)
-    //     HAL_Delay(200);                          // Đợi chip màn hình ổn định
-
-    //     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, 0); // Bây giờ mới CS = 0 để làm việc
-
-    //     // Gửi lệnh Software Reset để "làm sạch" nội bộ màn hình
-    //     TFT_WriteCommand(0x01);
-    //     HAL_Delay(150);
-
-    // TFT_WriteCommand(0x11); // Exit Sleep
-    // HAL_Delay(200);
-
-    // // Thiết lập chế độ màu 16-bit (5-6-5)
-    // TFT_WriteCommand(0x3A);
-    // TFT_WriteData(0x05);
-
-    // // Cấu hình hướng quét (Quan trọng để không bị sọc)
-    // TFT_WriteCommand(0x36);
-    // TFT_WriteData(0xC0);
-
-    // // Bật màn hình
-    // TFT_WriteCommand(0x29);
-    // HAL_Delay(100);
-
-    // // 3. XÓA NHIỄU - Đổ màu đỏ toàn màn hình
-    // TFT_WriteCommand(0x2A); // Column addr
-    // TFT_WriteData(0x00); TFT_WriteData(0x00);
-    // TFT_WriteData(0x00); TFT_WriteData(0x9F); // 127
-
-    // TFT_WriteCommand(0x2B); // Row addr
-    // TFT_WriteData(0x00); TFT_WriteData(0x00);
-    // TFT_WriteData(0x00); TFT_WriteData(0x9F); // 159
-
-    // TFT_WriteCommand(0x2C);
-
-    //     // Nửa trên: Xanh lá
-    //     for (int i = 0; i < 10240; i++) { // 10240 là một nửa của 20480
-    //         TFT_WriteData(0x07);
-    //         TFT_WriteData(0xE0);
-    //     }
-
-    //     // Nửa dưới: Đỏ
-    //     for (int i = 0; i < 10240; i++) {
-    //         TFT_WriteData(0xF8);
-    //         TFT_WriteData(0x00);
-  
-//  MotorL.setVelocity(10.0f); // Tăng tốc độ động cơ trái
-//  MotorR.setVelocity(10.0f); // Tăng tốc độ động cơ phải
-//  HAL_Delay(5000);// Chạy trong 2 giây
-//  MotorL.setVelocity(0.0f); // Dừng động cơ trái
-//  MotorR.setVelocity(0.0f); // Dừng động cơ phải
-  // HAL_Delay(2000);
-  // MotorL.setVelocity(-10.0f); // Quay ngược động cơ trái
-  // MotorR.setVelocity(-10.5f); // Quay ngược động cơ phải
-  // HAL_Delay(2000); // Chạy ngược trong 2 giây
-  // MotorL.setVelocity(0.0f); // Dừng động cơ trái
-  // MotorR.setVelocity(0.0f); // Dừng động cơ phải
-  // HAL_Delay(2000);
-  // MotorL.setVelocity(10.0f); // Tăng tốc độ động cơ trái
-  // MotorR.setVelocity(-10.5f); // Quay ngược động cơ phải
-  // HAL_Delay(2000);
-  // MotorL.setVelocity(0.0f); // Dừng động cơ trái
-  // MotorR.setVelocity(0.0f); // Dừng động cơ phải
-  // HAL_Delay(2000);
-  // MotorL.setVelocity(-10.0f); // Tăng tốc độ động cơ trái
-  // MotorR.setVelocity(10.5f); // Quay ngược động cơ phải
-  // HAL_Delay(2000);
-  // MotorL.setVelocity(0.0f); // Dừng động cơ trái
-  // MotorR.setVelocity(0.0f); // Dừng động cơ phải
-  HAL_TIM_Base_Start_IT(&htim10); // Bật ngắt định kỳ 20ms để đọc encoder và điều khiển PID
+//  /* Start scheduler */
+  osKernelStart();
   /* USER CODE END 2 */
 
   /* Infinite loop */
+
+  // HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_SET); // Bật LED để kiểm tra Task này có chạy không
+  // HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_RESET); // Tắt LED để kiểm tra Task này có chạy không
+  // __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 65535); // PWM cho Motor A (giả sử 30000 là giá trị phù hợp để đạt ~30 rad/s)
+  // HAL_GPIO_WritePin(GPIOB, GPIO_PIN_14, GPIO_PIN_SET); // Bật LED để kiểm tra Task này có chạy không
+  // HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_RESET); // Tắt LED để kiểm tra Task này có chạy không
+  // __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 65535); // PWM cho Motor A (giả sử 30000 là giá trị phù hợp để đạt ~30 rad/s)
+  // HAL_Delay(20000);
   /* USER CODE BEGIN WHILE */
   while (1)
   {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-//	  char *usb_msg = "STM32 USB OK!\r\n";
-//	  CDC_Transmit_FS((uint8_t*)usb_msg, strlen(usb_msg)); // Giao tiếp USB
+	  // CDC_Transmit_FS((uint8_t*)usb_msg, strlen(usb_msg)); // Giao tiếp USB
+    // HAL_Delay(2000); // Đợi 1 giây trước khi gửi tiếp
       // debug_deltaL = EncoderL.update();
       // debug_deltaR = EncoderR.update();
       // total_pulseL += debug_deltaL;
       // total_pulseR += debug_deltaR;
       // HAL_Delay(20); // Nghỉ 10ms để xung kịp tăng lên
-    myRobot.setTargetVelocities(20.0f, 20.0f); // Đặt mục tiêu vận tốc cho robot (ví dụ: 15 rad/s cho cả 2 bánh)
-    HAL_Delay(100);
+    // myRobot.setTargetVelocities(20.0f, 20.0f); // Đặt mục tiêu vận tốc cho robot (ví dụ: 15 rad/s cho cả 2 bánh)
+//    HAL_Delay(100);
+    //Quay từ 0 đến 180 độ
+//     for(int angle = 0; angle <= 180; angle += 5) {
+//         servo.setAngle(0, angle);
+//         HAL_Delay(20);
+//     }
+//     HAL_Delay(1000); // Đợi 1 giây
+//    if (current_time - last_time_battery >= 5000) { // Cập nhật mỗi 1 giây
+    // realVoltage = robot_batery.getVoltage();
+    // pinPercentage = robot_batery.getPercentage();
+    // cur_right = Motor_right.getCurrent();
+    // cur_left = Motor_left.getCurrent();
+//    last_time_battery = current_time;
+//    }
+    // if (usbBuffer.dequeue(&rx_byte)) {
+        
+    //     // 2. Nếu là ký tự Enter (\r hoặc \n)
+    //     if (rx_byte == '\r' || rx_byte == '\n') {
+    //         if (idx > 0) { // Chỉ gửi khi đã có chữ trong buffer
+    //             uart_buffer[idx] = '\0'; // Thêm ký tự kết thúc chuỗi
+                
+    //             // 3. Gửi ngược lại toàn bộ chuỗi cho Pi
+    //             // Thêm \r\n để Pi xuống dòng cho đẹp
+    //             strcat(uart_buffer, "\r\n"); 
+    //             CDC_Transmit_FS((uint8_t*)uart_buffer, strlen(uart_buffer));
+                
+    //             // 4. Reset chỉ số để đợi lệnh tiếp theo
+    //             idx = 0; 
+    //         }
+    //     } 
+    //     // 3. Nếu chưa phải Enter, cứ gom vào mảng
+    //     else {
+    //         if (idx < sizeof(uart_buffer) - 2) { // Chống tràn mảng
+    //             uart_buffer[idx++] = rx_byte;
+    //         }
+    //     }
+    // }
+    // imu.update(); // Cập nhật dữ liệu từ IMU
+    // HAL_Delay(1000); // Đợi 2000ms trước khi cập nhật lại (tần số 10Hz)
+    // if(btn_conf.reading()) {
+
+    //         tft.displayConfirmed(); // Hiển thị thông báo đã xác nhận
+    //         buzzer.turnOn(); // Kêu buzzer trong 1 giây 
+    //     }
+
   }
 }
+  // uint32_t dL = myRobot.getLastDeltaL();
+  // uint32_t dR = myRobot.getLastDeltaR();
+  // odometry.sendRawData(dL, dR, 0.0f); // Gửi dữ liệu về Pi (tạm thời để yaw = 0.0f, sau này sẽ thay bằng góc thực tế từ IMU)
+  
   /* USER CODE END 3 */
 
 
@@ -363,7 +361,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLM = 25;
   RCC_OscInitStruct.PLL.PLLN = 336;
-  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
   RCC_OscInitStruct.PLL.PLLQ = 7;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -374,12 +372,12 @@ void SystemClock_Config(void)
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSE;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   {
     Error_Handler();
   }
@@ -406,17 +404,17 @@ static void MX_ADC1_Init(void)
   /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
   */
   hadc1.Instance = ADC1;
-  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
+  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
   hadc1.Init.Resolution = ADC_RESOLUTION_12B;
-  hadc1.Init.ScanConvMode = DISABLE;
-  hadc1.Init.ContinuousConvMode = DISABLE;
+  hadc1.Init.ScanConvMode = ENABLE;
+  hadc1.Init.ContinuousConvMode = ENABLE;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-  hadc1.Init.NbrOfConversion = 1;
-  hadc1.Init.DMAContinuousRequests = DISABLE;
-  hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  hadc1.Init.NbrOfConversion = 3;
+  hadc1.Init.DMAContinuousRequests = ENABLE;
+  hadc1.Init.EOCSelection = ADC_EOC_SEQ_CONV;
   if (HAL_ADC_Init(&hadc1) != HAL_OK)
   {
     Error_Handler();
@@ -426,7 +424,26 @@ static void MX_ADC1_Init(void)
   */
   sConfig.Channel = ADC_CHANNEL_0;
   sConfig.Rank = 1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_3CYCLES;
+  sConfig.SamplingTime = ADC_SAMPLETIME_480CYCLES;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
+  */
+  sConfig.Channel = ADC_CHANNEL_1;
+  sConfig.Rank = 2;
+  sConfig.SamplingTime = ADC_SAMPLETIME_56CYCLES;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
+  */
+  sConfig.Channel = ADC_CHANNEL_4;
+  sConfig.Rank = 3;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -453,7 +470,7 @@ static void MX_I2C1_Init(void)
 
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
-  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.ClockSpeed = 400000;
   hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
   hi2c1.Init.OwnAddress1 = 0;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
@@ -494,7 +511,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_HIGH;
   hspi1.Init.CLKPhase = SPI_PHASE_2EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -582,7 +599,7 @@ static void MX_TIM3_Init(void)
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim3.Init.Period = 65535;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
   {
     Error_Handler();
@@ -725,6 +742,20 @@ static void MX_USART2_UART_Init(void)
   * @param None
   * @retval None
   */
+
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA2_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA2_Stream0_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
+
+}
+
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -735,10 +766,18 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
   HAL_GPIO_WritePin(GPIOB, TFT_DC_Pin|TFT_RST_Pin|MPU_INT_Pin|Motor_A1_Pin
                           |Motor_A2_Pin|Motor_B1_Pin|Motor_B2_Pin|BUZZER_Pin, GPIO_PIN_RESET);
+  /*Configure GPIO pin : PC13 */
+   GPIO_InitStruct.Pin = GPIO_PIN_13;
+   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+   GPIO_InitStruct.Pull = GPIO_NOPULL;
+   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(TFT_CS_GPIO_Port, TFT_CS_Pin, GPIO_PIN_RESET);
@@ -770,14 +809,126 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-extern "C" void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-    if (htim->Instance == TIM10) {
-      myRobot.update(); // Gọi hàm cập nhật điều khiển robot mỗi 20ms
-      debug_deltaL = myRobot.getFilteredVelocityL(); // Lấy giá trị thực tế đã qua lọc để debug
-      debug_deltaR = myRobot.getFilteredVelocityR();
+// extern "C" void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+//     if (htim->Instance == TIM10) {
+//       myRobot.update(); // Gọi hàm cập nhật điều khiển robot mỗi 20ms
+//       debug_deltaL = myRobot.getFilteredVelocityL(); // Lấy giá trị thực tế đã qua lọc để debug
+//       debug_deltaR = myRobot.getFilteredVelocityR();
 
-    }
+//     }
+// }
+extern "C"{
+/* USER CODE END Header_StartMotorTask */
+void StartMotorTask(void *argument)
+{
+
+  /* USER CODE BEGIN 5 */
+  /* Infinite loop */
+  for(;;)
+  {
+
+    myMotorTask.MotorTask_Execute(); 
+    // myRobot.setTargetVelocities(30.0f, 30.0f); // Đặt mục tiêu vận tốc cho robot (ví dụ: 15 rad/s cho cả 2 bánh)
+    // myRobot.update(); // Cập nhật điều khiển robot mỗi 20ms
+    // HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_SET); // Bật LED để kiểm tra Task này có chạy không
+    // HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_RESET); // Tắt LED để kiểm tra Task này có chạy không
+    // __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 32767); // PWM cho Motor A (giả sử 30000 là giá trị phù hợp để đạt ~30 rad/s)
+    // HAL_GPIO_WritePin(GPIOB, GPIO_PIN_14, GPIO_PIN_SET); // Bật LED để kiểm tra Task này có chạy không
+    // HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_RESET); // Tắt LED để kiểm tra Task này có chạy không
+    // __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 32767); // PWM cho Motor A (giả sử 30000 là giá trị phù hợp để đạt ~30 rad/s)
+    osDelay(10);
+  }
+  /* USER CODE END 5 */
 }
+
+/* USER CODE BEGIN Header_StartCommTask */
+/**
+* @brief Function implementing the Comm_Task thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartCommTask */
+void StartCommTask(void *argument)
+{
+  /* USER CODE BEGIN StartCommTask */
+
+  /* Infinite loop */
+  for(;;)
+  {
+    uartParser.process();
+    // Task ngủ 20ms để nhường CPU cho Motor_Task tính toán PID
+    osDelay(20);
+  }
+  /* USER CODE END StartCommTask */
+}
+/* USER CODE BEGIN Header_StartMissionTask */
+/**
+* @brief Function implementing the Mission_Task thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartMissionTask */
+
+
+void StartMissionTask(void *argument)
+{
+  /* USER CODE BEGIN StartMissionTask */
+  bool last_button_state = 0;
+  /* Infinite loop */
+  for(;;)
+  {
+   // 1. Đọc nút nhấn (Debounce 50ms nhờ chu kỳ Task)
+      bool okPressed = btn_conf.reading();
+
+      if(okPressed != last_button_state) {
+          last_button_state = okPressed;
+          telemetry.sendButton(okPressed); // Gửi trạng thái nút cấu hình ngay khi có sự thay đổi
+      }
+//
+//        // 2. Cập nhật FSM cho từng ngăn
+      for(int i = 0; i < 4; i++) {
+          compartment[i].update(okPressed);
+       }
+       
+    osDelay(50); // Đọc nút mỗi 50ms để debounce và đủ thời gian cho người dùng nhấn
+  }
+  /* USER CODE END StartMissionTask */
+}
+
+
+/* USER CODE BEGIN Header_StartHealthTask */
+/**
+* @brief Function implementing the Health_Task thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartHealthTask */
+void StartHealthTask(void *argument)
+{
+  /* USER CODE BEGIN StartHealthTask */
+  /* Infinite loop */
+  for(;;)
+  { 
+    // telemetry.sendBattery();
+    osDelay(1000);
+  }
+  /* USER CODE END StartHealthTask */
+}
+
+}
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  /* USER CODE BEGIN Callback 0 */
+
+  /* USER CODE END Callback 0 */
+  if (htim->Instance == TIM9) {
+    HAL_IncTick();
+  }
+  /* USER CODE BEGIN Callback 1 */
+
+  /* USER CODE END Callback 1 */
+}
+
 /* USER CODE END 4 */
 
 /**

@@ -24,6 +24,7 @@ void Motor::setVelocity(float w_rad_s) {
         // Quay thuận: IN1=HIGH, IN2=LOW
         HAL_GPIO_WritePin(_port1, _pin1, GPIO_PIN_SET);
         HAL_GPIO_WritePin(_port2, _pin2, GPIO_PIN_RESET);
+        
     } 
     else if (speed < 0) {
         // Quay nghịch: IN1=LOW, IN2=HIGH
@@ -37,7 +38,7 @@ void Motor::setVelocity(float w_rad_s) {
     }
 
     // Tính toán và xuất xung PWM ra chân ENA
-    uint32_t pulse = (uint32_t)(speed * PWM_MAX);
+    uint32_t pulse = (uint32_t)((float)speed * PWM_MAX);
     __HAL_TIM_SET_COMPARE(_htim, _channel, pulse);
 }
 

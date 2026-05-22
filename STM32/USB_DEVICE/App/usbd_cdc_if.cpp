@@ -20,9 +20,9 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "usbd_cdc_if.h"
+#include "usb_ring_buffer.hpp"
 
 /* USER CODE BEGIN INCLUDE */
-
 /* USER CODE END INCLUDE */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -261,8 +261,14 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 6 */
-	char *usb_msg = "STM32 Đã nhận được từ Pi!\r\n";
-	CDC_Transmit_FS((uint8_t*)usb_msg, strlen(usb_msg));
+  extern RingBuffer usbBuffer; // Khai báo biến toàn cục cho vòng đệm nhận USB
+	  /* Get the received data buffer and update the length */
+  for(uint32_t i = 0; i < *Len; i++) {
+   usbBuffer.enqueue(Buf[i]); // Thêm từng byte vào vòng đệm
+  }
+  // char *usb_msg = "STM32 USB OK!\r\n";
+  // CDC_Transmit_FS((uint8_t*)usb_msg, strlen(usb_msg)); // Gửi lại dữ liệu nhận được qua USB để kiểm tra
+  USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
   USBD_CDC_ReceivePacket(&hUsbDeviceFS);
   return (USBD_OK);
   /* USER CODE END 6 */

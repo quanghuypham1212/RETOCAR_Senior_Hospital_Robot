@@ -6,13 +6,14 @@
  */
 
 #include "Odometry.hpp"
+#include "usbd_cdc_if.h" 
 
-Odometry::Odometry() {
-	// TODO Auto-generated constructor stub
-
-}
-
-Odometry::~Odometry() {
-	// TODO Auto-generated destructor stub
+void Odometry::sendRawData(int32_t d_left, int32_t d_right, float imu_yaw) {
+    // Đóng gói dữ liệu theo định dạng chuỗi: d (delta), left, right, yaw
+    // Chúng ta dùng float cho yaw để Pi nhận được góc chính xác ngay
+    int len = sprintf(tx_buffer, "d,%ld,%ld,%.4f\n", d_left, d_right, imu_yaw);
+    
+    // Gửi trực tiếp qua cổng USB CDC
+    CDC_Transmit_FS((uint8_t*)tx_buffer, len);
 }
 

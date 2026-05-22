@@ -1,17 +1,20 @@
-/*
- * Odometry.hpp
- *
- *  Created on: Apr 24, 2026
- *      Author: huy
- */
+#ifndef ODOMETRY_HPP
+#define ODOMETRY_HPP
 
-#ifndef SRC_ODOMETRY_HPP_
-#define SRC_ODOMETRY_HPP_
+#include "main.h"
+#include <stdio.h>
+#include <string.h>
 
 class Odometry {
+private:
+    char tx_buffer[128]; // Bộ đệm để đóng gói chuỗi gửi đi
+
 public:
-	Odometry();
-	virtual ~Odometry();
+    Odometry() {}
+
+    // Hàm đóng gói dữ liệu thô để gửi lên Pi
+    // Gói tin: d,delta_left,delta_right,yaw_rad\n
+    void sendRawData(int32_t d_left, int32_t d_right, float imu_yaw);
 };
 
-#endif /* SRC_ODOMETRY_HPP_ */
+#endif
