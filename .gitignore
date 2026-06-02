@@ -1,0 +1,31 @@
+
+# Chỉ bỏ thư mục build/install/log của workspace Raspberry
+Raspberry/ros_ws_rasp/build/
+Raspberry/ros_ws_rasp/install/
+Raspberry/ros_ws_rasp/log/
+
+# Chỉ bỏ thư mục build/install/log của workspace Laptop
+Raspberry/ros2_ws_laptop/build/
+Raspberry/ros2_ws_laptop/install/
+Raspberry/ros2_ws_laptop/log/
+
+# --- Cấu hình cho thư mục STM32 ---
+STM32/Debug/
+STM32/Release/
+STM32/.settings/
+STM32/.history/
+STM32/*.bak
+# Lưu ý: Nếu bạn muốn loại bỏ các file .launch của STM32CubeIDE thì giữ dòng dưới:
+STM32/*.launch
+
+# --- Cấu hình VS Code ---
+.vscode/
+
+# --- Cấu hình hệ thống ---
+.DS_Store
+
+# --- Cấu hình Python (cho ROS 2) ---
+*.pyc
+__pycache__/
+*.pyo
+*.pyd

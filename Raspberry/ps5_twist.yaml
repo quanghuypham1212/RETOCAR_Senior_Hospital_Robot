@@ -1,0 +1,22 @@
+/teleop_twist_joy_node:
+  ros__parameters:
+    require_enable_button: true
+    enable_button: 5             # Giữ nguyên nút R1 của Huy
+
+    # --- 3 DÒNG THẦN THÁNH ÉP KHÓA CỜ CẤU HÌNH NGẦM ---
+    enable_turbo_button: -1      # Khóa cứng: Cấm không cho nút bấm nào tự kích hoạt chế độ phóng nhanh
+    axis_linear_config:             # Ép buộc hệ thống phân rã trục tuyến tính gắt gao
+      x: [1]
+    axis_angular_config:            # Ép buộc hệ thống phân rã trục góc gắt gao
+      yaw: [0]
+    # --------------------------------------------------
+
+    axis_linear:
+      x: 1                       # Cần Analog TRÁI hướng Lên/Xuống
+    scale_linear:
+      x: 0.4
+
+    axis_angular:
+      yaw: 0                     # Cần Analog TRÁI hướng Trái/Phải
+    scale_angular:
+      yaw: 0.6

@@ -1,0 +1,352 @@
+<?xml version="1.0"?>
+<robot name="my_robot" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+
+ <link name="base_footprint" />
+
+  <joint name="base_link_joint" type="fixed">
+    <parent link="base_footprint" />
+    <child link="base_link" />
+    
+    <origin xyz="0 0 0.0805" rpy="0 0 0" /> 
+  </joint>
+
+  <link name="base_link">
+    <visual>
+      <!-- origin ở đây giúp căn chỉnh hình dáng so với tâm hệ tọa độ -->
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <!-- Tấm mica tròn dày 0.005m, bán kính 0.125m -->
+        <cylinder length="0.005" radius="0.125"/>
+      </geometry>
+      <material name="blue">
+        <color rgba="0 0 1 0.7"/> <!-- Màu xanh trong suốt cho giống mica -->
+      </material>
+    </visual>
+  </link>
+
+  <!-- Link cho bánh xe bên trái -->
+  <link name="left_wheel">
+    <visual>
+      <!-- Xoay hình trụ 90 độ quanh trục X để nó nằm ngang (1.5708 rad = 90 deg) -->
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder length="0.038" radius="0.0425"/>
+      </geometry>
+      <material name="black">
+        <color rgba="0 0 0 1"/>
+      </material>
+    </visual>
+  </link>
+
+  <!-- Khớp nối bánh xe với base_link -->
+  <joint name="left_wheel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="left_wheel"/>
+    <!-- Vị trí gắn: x=0 (giữa xe), y=0.154 (bên trái), z=-0.038 (dưới tấm mica) -->
+    <origin xyz="0 0.154 -0.0425" rpy="0 0 0"/>
+    <!-- Trục xoay của bánh xe là trục Y -->
+    <axis xyz="0 1 0"/>
+  </joint>
+
+  <!-- Link cho bánh xe bên phai -->
+  <link name="right_wheel">
+    <visual>
+      <!-- Xoay hình trụ 90 độ quanh trục X để nó nằm ngang (1.5708 rad = 90 deg) -->
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder length="0.038" radius="0.0425"/>
+      </geometry>
+      <material name="black">
+        <color rgba="0 0 0 1"/>
+      </material>
+    </visual>
+  </link>
+
+  <!-- hớp nối bánh xe với base_link -->
+  <joint name="right_wheel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="right_wheel"/>
+    <!-- Vị trí gắn: x=0 (giữa xe), y=0.154 (bên trái), z=-0.038 (dưới tấm mica) -->
+    <origin xyz="0 -0.154 -0.0425" rpy="0 0 0"/>
+    <!-- Trục xoay của bánh xe là trục Y -->
+    <axis xyz="0 1 0"/>
+  </joint>
+
+  <!-- Link cho thanh nhôm trai truoc -->
+  <link name="pillar_front_left">
+  <visual>
+    <geometry>
+      <box size="0.01 0.01 0.15"/> <!-- Thanh nhôm 20x20mm, cao 150mm -->
+    </geometry>
+    <material name="white">
+      <color rgba="1 1 1 1"/>
+    </material>
+  </visual>
+  </link>
+
+  <!-- Khớp nối thanh nhôm vào tầng 1 (base_link) -->
+  <joint name="pillar_front_left_joint" type="fixed">
+  <parent link="base_link"/>
+  <child link="pillar_front_left"/>
+  <!-- Đặt thanh nhôm cách tâm 8cm về phía trước và 8cm sang trái -->
+  <origin xyz="0.08 0.08 0.075" rpy="0 0 0"/> 
+  </joint>
+
+  <!-- Link cho thanh nhôm trai sau -->
+  <link name="pillar_behind_left">
+  <visual>
+    <geometry>
+      <box size="0.01 0.01 0.15"/> <!-- Thanh nhôm 20x20mm, cao 100mm -->
+    </geometry>
+    <material name="white">
+      <color rgba="1 1 1 1"/>
+    </material>
+  </visual>
+  </link>
+
+  <!-- Khớp nối thanh nhôm vào tầng 1 (base_link) -->
+  <joint name="pillar_behind_left_joint" type="fixed">
+  <parent link="base_link"/>
+  <child link="pillar_behind_left"/>
+  <!-- Đặt thanh nhôm cách tâm 8cm về phía trước và 8cm sang trái -->
+  <origin xyz="-0.08 0.08 0.075" rpy="0 0 0"/> 
+  </joint>
+
+  <!-- Link cho thanh nhôm phai truoc -->
+  <link name="pillar_front_right">
+  <visual>
+    <geometry>
+      <box size="0.01 0.01 0.15"/> <!-- Thanh nhôm 20x20mm, cao 100mm -->
+    </geometry>
+    <material name="white">
+      <color rgba="1 1 1 1"/>
+    </material>
+  </visual>
+  </link>
+
+  <!-- Khớp nối thanh nhôm vào tầng 1 (base_link) -->
+  <joint name="pillar_front_right_joint" type="fixed">
+  <parent link="base_link"/>
+  <child link="pillar_front_right"/>
+  <!-- Đặt thanh nhôm cách tâm 8cm về phía trước và 8cm sang trái -->
+  <origin xyz="0.08 -0.08 0.075" rpy="0 0 0"/> 
+  </joint>
+
+ <!-- Link cho thanh nhôm phai sau -->
+  <link name="pillar_behind_right">
+  <visual>
+    <geometry>
+      <box size="0.01 0.01 0.15"/> <!-- Thanh nhôm 20x20mm, cao 100mm -->
+    </geometry>
+    <material name="white">
+      <color rgba="1 1 1 1"/>
+    </material>
+  </visual>
+  </link>
+
+  <!-- Khớp nối thanh nhôm vào tầng 1 (base_link) -->
+  <joint name="pillar_behind_right_joint" type="fixed">
+  <parent link="base_link"/>
+  <child link="pillar_behind_right"/>
+  <!-- Đặt thanh nhôm cách tâm 8cm về phía trước và 8cm sang trái -->
+  <origin xyz="-0.08 -0.08 0.075" rpy="0 0 0"/> 
+  </joint>
+
+  <!-- Tam mica tang 2  -->
+  <link name="deck_2">
+  <visual>
+    <geometry>
+      <cylinder radius="0.125" length="0.005"/> <!-- Mica dày 3mm -->
+    </geometry>
+    <material name="blue">
+      <color rgba="0 0 1 0.5"/>
+    </material>
+  </visual>
+  </link>
+
+  <joint name="deck_2_joint" type="fixed">
+  <parent link="base_link"/>
+  <child link="deck_2"/>
+  <!-- Nằm trên base_link 10cm -->
+  <origin xyz="0 0 0.15" rpy="0 0 0"/>
+  </joint>
+
+ <!-- Link cho thanh nhôm trai truoc tang 2 -->
+  <link name="pillar_front_left_2">
+  <visual>
+    <geometry>
+      <box size="0.01 0.01 0.15"/> <!-- Thanh nhôm 20x20mm, cao 100mm -->
+    </geometry>
+    <material name="white">
+      <color rgba="1 1 1 1"/>
+    </material>
+  </visual>
+  </link>
+
+  <!-- Khớp nối thanh nhôm vào tầng 2 (base_link) -->
+  <joint name="pillar_front_left_joint_2" type="fixed">
+  <parent link="base_link"/>
+  <child link="pillar_front_left_2"/>
+  <!-- Đặt thanh nhôm cách tâm 8cm về phía trước và 8cm sang trái -->
+  <origin xyz="0.08 0.08 0.225" rpy="0 0 0"/> 
+  </joint>
+
+  <!-- Link cho thanh nhôm trai sau tang 2-->
+  <link name="pillar_behind_left_2">
+  <visual>
+    <geometry>
+      <box size="0.01 0.01 0.15"/> <!-- Thanh nhôm 20x20mm, cao 100mm -->
+    </geometry>
+    <material name="white">
+      <color rgba="1 1 1 1"/>
+    </material>
+  </visual>
+  </link>
+
+  <!-- Khớp nối thanh nhôm vào tầng 2 (base_link) -->
+  <joint name="pillar_behind_left_joint_2" type="fixed">
+  <parent link="base_link"/>
+  <child link="pillar_behind_left_2"/>
+  <!-- Đặt thanh nhôm cách tâm 8cm về phía trước và 8cm sang trái -->
+  <origin xyz="-0.08 0.08 0.225" rpy="0 0 0"/> 
+  </joint>
+
+  <!-- Link cho thanh nhôm phai truoc tang 2 -->
+  <link name="pillar_front_right_2">
+  <visual>
+    <geometry>
+      <box size="0.01 0.01 0.15"/> <!-- Thanh nhôm 20x20mm, cao 100mm -->
+    </geometry>
+    <material name="white">
+      <color rgba="1 1 1 1"/>
+    </material>
+  </visual>
+  </link>
+
+  <!-- Khớp nối thanh nhôm vào tầng 2 (base_link) -->
+  <joint name="pillar_front_right_joint_2" type="fixed">
+  <parent link="base_link"/>
+  <child link="pillar_front_right_2"/>
+  <!-- Đặt thanh nhôm cách tâm 8cm về phía trước và 8cm sang trái -->
+  <origin xyz="0.08 -0.08 0.225" rpy="0 0 0"/> 
+  </joint>
+
+ <!-- Link cho thanh nhôm phai sau tang 2-->
+  <link name="pillar_behind_right_2">
+  <visual>
+    <geometry>
+      <box size="0.01 0.01 0.15"/> <!-- Thanh nhôm 20x20mm, cao 100mm -->
+    </geometry>
+    <material name="white">
+      <color rgba="1 1 1 1"/>
+    </material>
+  </visual>
+  </link>
+
+  <!-- Khớp nối thanh nhôm vào tầng 2 (base_link) -->
+  <joint name="pillar_behind_right_joint_2" type="fixed">
+  <parent link="base_link"/>
+  <child link="pillar_behind_right_2"/>
+  <!-- Đặt thanh nhôm cách tâm 8cm về phía trước và 8cm sang trái -->
+  <origin xyz="-0.08 -0.08 0.225" rpy="0 0 0"/> 
+  </joint>
+
+  <!-- Tam mica tang 3  -->
+  <link name="deck_3">
+  <visual>
+    <geometry>
+      <cylinder radius="0.125" length="0.005"/> <!-- Mica dày 5mm -->
+    </geometry>
+    <material name="blue">
+      <color rgba="0 0 1 0.5"/>
+    </material>
+  </visual>
+  </link>
+
+  <joint name="deck_3_joint" type="fixed">
+  <parent link="base_link"/>
+  <child link="deck_3"/>
+  <!-- Nằm trên base_link 10cm -->
+  <origin xyz="0 0 0.3" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Banh da huong phia truoc -->
+  <link name="caster_wheel_front">
+  <visual>
+    <geometry>
+      <sphere radius="0.0425"/> <!-- Bán kính nhỏ hơn bánh chính -->
+    </geometry>
+    <material name="black"/>
+  </visual>
+  <collision>
+    <geometry>
+      <sphere radius="0.025"/>
+    </geometry>
+  </collision>
+  </link>
+
+  <joint name="caster_wheel_joint_front" type="fixed">
+  <parent link="base_link"/>
+  <child link="caster_wheel_front"/>
+  <!-- Đặt ở phía trước (x=0.1) và thấp xuống để chạm đất -->
+  <origin xyz="0.1 0 -0.0425" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Banh da huong phia sau -->
+  <link name="caster_wheel_behind">
+  <visual>
+    <geometry>
+      <sphere radius="0.0425"/> <!-- Bán kính nhỏ hơn bánh chính -->
+    </geometry>
+    <material name="black"/>
+  </visual>
+  <collision>
+    <geometry>
+      <sphere radius="0.025"/>
+    </geometry>
+  </collision>
+  </link>
+
+  <joint name="caster_wheel_joint_behind" type="fixed">
+  <parent link="base_link"/>
+  <child link="caster_wheel_behind"/>
+  <!-- Đặt ở phía trước (x=0.1) và thấp xuống để chạm đất -->
+  <origin xyz="-0.1 0 -0.0425" rpy="0 0 0"/>
+  </joint>
+
+  <link name="laser">
+  <visual>
+    <geometry>
+      <cylinder radius="0.03" length="0.02"/>
+    </geometry>
+    <material name="red">
+      <color rgba="1 0 0 1"/>
+    </material>
+  </visual>
+  </link>
+
+  <joint name="laser_joint" type="fixed">
+  <parent link="deck_3"/> <!-- Gắn lên tầng 2 -->
+  <child link="laser"/>
+  <origin xyz="0.00 0 0.11" rpy="0 0 0"/>
+  </joint>
+
+  <link name="laser_frame_pillar">
+  <visual>
+    <geometry>
+      <box size="0.02 0.02 0.1"/> <!-- Thanh nhôm 20x20mm, cao 180mm -->
+    </geometry>
+    <material name="white">
+      <color rgba="1 1 1 1"/>
+    </material>
+  </visual>
+  </link>
+
+  <joint name="laser_joint_pillar" type="fixed">
+  <parent link="deck_3"/> <!-- Gắn lên tầng 2 -->
+  <child link="laser_frame_pillar"/>
+  <origin xyz="0.00 0 0.05" rpy="0 0 0"/>
+  </joint>
+
+</robot>
