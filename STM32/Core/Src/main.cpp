@@ -39,6 +39,7 @@
 #include "task_motor.hpp"
 #include "task_comm_trans.hpp"
 #include "filter_imu.hpp"
+#include "viet_font.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -827,7 +828,7 @@ void StartMotorTask(void *argument)
   for(;;)
   {
 
-    myMotorTask.MotorTask_Execute(); 
+    // myMotorTask.MotorTask_Execute(); 
     // myRobot.setTargetVelocities(30.0f, 30.0f); // Đặt mục tiêu vận tốc cho robot (ví dụ: 15 rad/s cho cả 2 bánh)
     // myRobot.update(); // Cập nhật điều khiển robot mỗi 20ms
     // HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_SET); // Bật LED để kiểm tra Task này có chạy không
@@ -836,6 +837,7 @@ void StartMotorTask(void *argument)
     // HAL_GPIO_WritePin(GPIOB, GPIO_PIN_14, GPIO_PIN_SET); // Bật LED để kiểm tra Task này có chạy không
     // HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_RESET); // Tắt LED để kiểm tra Task này có chạy không
     // __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, 32767); // PWM cho Motor A (giả sử 30000 là giá trị phù hợp để đạt ~30 rad/s)
+    buzzer.update(); // Cập nhật trạng thái buzzer (tự tắt sau 1 giây nếu đã bật)
     osDelay(10);
   }
   /* USER CODE END 5 */
@@ -889,7 +891,8 @@ void StartMissionTask(void *argument)
       for(int i = 0; i < 4; i++) {
           compartment[i].update(okPressed);
        }
-       
+    
+    //buzzer.update(); // Cập nhật trạng thái buzzer (tự tắt sau 1 giây nếu đã bật)
     osDelay(50); // Đọc nút mỗi 50ms để debounce và đủ thời gian cho người dùng nhấn
   }
   /* USER CODE END StartMissionTask */
@@ -909,7 +912,7 @@ void StartHealthTask(void *argument)
   /* Infinite loop */
   for(;;)
   { 
-    // telemetry.sendBattery();
+    telemetry.sendBattery();
     osDelay(1000);
   }
   /* USER CODE END StartHealthTask */

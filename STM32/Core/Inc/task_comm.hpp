@@ -11,19 +11,28 @@
 #define PKT_FOOTER 0x55
 #define CMD_OPEN_COMPARTMENT 0x02
 #define CMD_SET_VELOCITY     0x03
+#define CMD_LOADING_COMPARTMENT 0x07 // Lệnh mở 4 ngăn thuốc tại vị trí xuất phát
+#define CMD_CLOSE_COMPARTMENT 0x08 // Lệnh đóng ngăn thuốc tại vị trí xuất phát
 
 #pragma pack(push, 1)
 
-// Payload cho lệnh 0x02 (36 byte)
 struct PayloadOpen {
     uint8_t id;            // 1 byte (1-4)
     char bedNumber[5];     // 5 byte
-    char patientName[5];  // 5 byte
+    char patientName[20];  // 5 byte
 };
 
 struct PayloadVelocity {
     float vx; // Vận tốc thẳng V_x
     float wz; // Vận tốc góc Omega_z
+};
+
+struct PayloadLoading {
+    uint8_t id;
+};
+
+struct PayloadClose {
+    uint8_t id;
 };
 
 #pragma pack(pop)

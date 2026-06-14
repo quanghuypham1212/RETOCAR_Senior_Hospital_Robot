@@ -14,6 +14,7 @@ private:
     static const int SAMPLES = 20;
     float samples[SAMPLES];
     int sample_index = 0;
+    int validSamples = 0; // Số lượng mẫu đã thu thập, tối đa là SAMPLES
 
 public:
     // Khởi tạo: Truyền con trỏ mảng ADC, Vmax, Vmin và tỉ lệ phân áp

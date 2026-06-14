@@ -25,7 +25,7 @@ void UartParser::process() {
 
         case WAIT_TYPE:
             _pktType = byte;
-            if(byte == 0x02 || byte == 0x03) {
+            if(byte == 0x02 || byte == 0x03 || byte == 0x07 || byte == 0x08) {
                 // Nếu là loại lệnh hợp lệ, tiếp tục nhận độ dài
                 _calcChecksum += byte;
                 _state = WAIT_LEN;
@@ -37,7 +37,7 @@ void UartParser::process() {
 
         case WAIT_LEN:
             _pktLen = byte;
-            if ((this->_pktType == 0x02 && byte == 11) || (this->_pktType == 0x03 && byte == 8)) {
+            if ((this->_pktType == 0x02 && byte == 26) || (this->_pktType == 0x03 && byte == 8) || (this->_pktType == 0x07 && byte == 1) || (this->_pktType == 0x08 && byte == 1)) {
                 // Nếu độ dài hợp lệ với loại lệnh, tiếp tục nhận payload
                 _calcChecksum += byte;
                 _payloadIndex = 0;
@@ -120,6 +120,38 @@ void UartParser::executeCommand(uint8_t cmdType, uint8_t* payload, uint8_t len) 
         // Chuyển đổi từ int16_t sang float nếu cần thiết
         *_targetVx = velData->vx; // Ví dụ: nếu gửi vx=150 thì sẽ thành 1.5 m/s
         *_targetWz = velData->wz; // Ví dụ: nếu gửi wz=50 thì sẽ thành 0.5 rad/s
+    } else if(cmdType == CMD_LOADING_COMPARTMENT) {
+    if(len != sizeof(PayloadLoading))
+    {
+        return;
+    }
+
+    PayloadLoading* data = (PayloadLoading*)payload;
+
+    uint8_t id = data->id;
+
+    if(id < 1 || id > 4)
+    {
+        return;
+    }
+    
+    _compartments[id - 1].triggerLoadingOpen();
+    } else if(cmdType == CMD_CLOSE_COMPARTMENT) {
+        if(len != sizeof(PayloadClose))
+        {
+            return;
+        }
+
+        PayloadClose* data = (PayloadClose*)payload;
+
+        uint8_t id = data->id;
+
+        if(id < 1 || id > 4)
+        {
+            return;
+        }
+
+        _compartments[id - 1].triggerClose();
     } else {
         const char* errCmd = "ERR: Loai lenh khong ho tro\r\n";
         CDC_Transmit_FS((uint8_t*)errCmd, (uint16_t)strlen(errCmd));

@@ -3,17 +3,11 @@
 
 #include "main.h"
 #include <string>
+#include "viet_font.h"
+#include "font_VN.h"
 
 // Cấu trúc dữ liệu thuốc để quản lý tập trung
 struct MedicineInfo {
-    // 1. Thông tin định danh (Quan trọng nhất để xác nhận)
-    // std::string patientName;    // Tên bệnh nhân (Ví dụ: "NGUYEN VAN A")
-    // std::string bedNumber;      // Số giường (Ví dụ: "102-A")
-    
-    // // 2. Thông tin điều khiển robot
-    // uint8_t compartmentID;      // Số ngăn thuốc (1, 2, 3...) để STM32 biết mở Servo nào
-    // // 4. Trạng thái (Tùy chọn - giúp quản lý hành trình)
-    // bool isDelivered;           // Đã giao thành công hay chưa
     int compartmentID;
     char patientName[32]; // Mảng cố định 32 byte
     char bedNumber[16];   // Mảng cố định 16 byte
@@ -30,6 +24,9 @@ public:
     void drawString(uint16_t x, uint16_t y, const std::string& str, uint16_t color, uint16_t bg_color); // Vẽ chuỗi văn bản
     void draw_pixel(uint16_t x, uint16_t y, uint16_t color);
     void drawChar(uint16_t x, uint16_t y, char c, uint16_t color, uint16_t bg_color); // Vẽ ký tự đơn lẻ
+    void drawGlyph(uint16_t x, uint16_t y, int glyphIndex, uint16_t color, uint16_t bg); // Vẽ glyph từ font tiếng Việt
+    void drawUTF8String(uint16_t x,uint16_t y,const std::string& str,uint16_t color, uint16_t bg);
+    void drawVietnameseString(uint16_t x, uint16_t y, const char* str, uint16_t color);
     // Hàm quan trọng: Hiển thị hướng dẫn sử dụng thuốc
     void displayMedicineGuide(const MedicineInfo& med);
     void displayConfirmed();

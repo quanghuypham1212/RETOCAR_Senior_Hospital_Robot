@@ -8,6 +8,8 @@ Compartment::Compartment(int id, ServoController* servo, Button* btn_conf, Buzze
     this->buzzer = buzzer;
     this->tft = tft;
     this->currentState = LOCKED;
+    this->confirmStartTime = 0;    // Khởi tạo = 0 để tránh giá trị rác
+
 }
 
 void Compartment::setData(const MedicineInfo& med) {
@@ -73,42 +75,78 @@ void Compartment::update(bool btnPressed) {
             break;
 
         case OPENING:
-            tft->displayMedicineGuide(currentMed); 
-            servo->openCompartment(id); 
+            // tft->displayMedicineGuide(currentMed); 
+            // servo->openCompartment(id); 
             
-            // CHỐT CHẶN VÀNG: Ngay khi mở ngăn, ép biến quá khứ bằng true 
-            // Điều này đánh lừa Class là "nút đang được đè sẵn rồi, đừng dính sườn xung nữa"
+            // // CHỐT CHẶN VÀNG: Ngay khi mở ngăn, ép biến quá khứ bằng true 
+            // // Điều này đánh lừa Class là "nút đang được đè sẵn rồi, đừng dính sườn xung nữa"
+            // lastBtnState = true; 
+            
+            // currentState = WAITING_CONFIRM;
+            // break;
+            servo->openCompartment(id);
             lastBtnState = true; 
-            
-            currentState = WAITING_CONFIRM;
+            if(openMode == PATIENT_MODE)
+            {
+                tft->displayMedicineGuide(currentMed);
+                currentState = WAITING_CONFIRM;
+            }
+            else
+            {
+                currentState = WAITING_LOADING_CONFIRM;
+            }
+
             break;
 
         case WAITING_CONFIRM:
             // CHỈ KHI CÓ SƯỜN XUNG LÊN THỰC SỰ (Thả tay ra rồi bấm lại phát nữa) THÌ MỚI ĐÓNG NẮP
             if (isEdgeRising) { 
+                buzzer->beep(200);
                 tft->displayConfirmed(); 
+                servo->closeCompartment(id); 
+                confirmStartTime = xTaskGetTickCount(); // Lưu thời điểm bắt đầu đóng nắp
                 currentState = CLOSING;
             }
             break;
+        
+        case WAITING_LOADING_CONFIRM:
 
-       case CLOSING:
-            servo->closeCompartment(id); 
-            
-            char status_msg[100];
-            int len = snprintf(status_msg, sizeof(status_msg), 
-                            "\r\n[SYSTEM] Ngan %d: DA DONG (Xac nhan thanh cong)\r\n", 
-                            this->id);
-            CDC_Transmit_FS((uint8_t*)status_msg, (uint16_t)len);
+            if(isEdgeRising)
+            {
+                servo->closeCompartment(id);
+                currentState = LOCKED;
+            }
 
-            currentState = LOCKED;
+            break;
+
+        case CLOSING:
+            //servo->closeCompartment(id); 
+            if ((xTaskGetTickCount() - confirmStartTime) >= pdMS_TO_TICKS(1000)) { 
+                tft->Idle();
+                currentState = LOCKED; // 4. Hết 3 giây, chuyển về trạng thái khóa (màn hình Idle)
+            }
             break;
     }
 }
 
 void Compartment::triggerOpen() {
+    openMode = PATIENT_MODE;
     if (currentState == LOCKED) {
         currentState = OPENING;
     }
+}
+
+void Compartment::triggerLoadingOpen() {
+    openMode = LOADING_MODE;
+    if (currentState == LOCKED) {
+        currentState = OPENING;
+    }
+}
+
+void Compartment::triggerClose() {
+        servo->closeCompartment(id); 
+        currentState = LOCKED;   
+        tft->Idle();
 }
 
 State Compartment::getState() {
