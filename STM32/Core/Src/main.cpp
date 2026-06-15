@@ -828,7 +828,7 @@ void StartMotorTask(void *argument)
   for(;;)
   {
 
-    // myMotorTask.MotorTask_Execute(); 
+    myMotorTask.MotorTask_Execute();
     // myRobot.setTargetVelocities(30.0f, 30.0f); // Đặt mục tiêu vận tốc cho robot (ví dụ: 15 rad/s cho cả 2 bánh)
     // myRobot.update(); // Cập nhật điều khiển robot mỗi 20ms
     // HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_SET); // Bật LED để kiểm tra Task này có chạy không

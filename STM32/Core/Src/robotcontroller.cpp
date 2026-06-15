@@ -7,6 +7,18 @@ void RobotController::setTargetVelocities(float v_left, float v_right) {
 }
 
 void RobotController::update(void) {
+
+    if(_startup_counter < STARTUP_TICKS) {
+        _startup_counter++;
+        EncoderL.reset(); // Đặt lại encoder về 0 để tránh sốc khi bắt đầu, đồng thời giúp bộ lọc thông thấp hoạt động tốt hơn trong những lần cập nhật đầu tiên
+        EncoderR.reset();
+        filtered_actual[0] = 0.0f; // Đảm bảo vận tốc thực tế bắt đầu từ 0
+        filtered_actual[1] = 0.0f;
+        motorL.stop(); // Đảm bảo động cơ không chạy trong giai đoạn khởi động
+        motorR.stop();
+        return; // Chờ đến khi encoder ổn định
+    }
+    
     const float max_v_change = ACCELERATION_LIMIT * SAMPLING_TIME_S;
 
 	// 1. Đọc Encoder (Huy thay bằng Timer tương ứng của mình)
@@ -23,6 +35,11 @@ void RobotController::update(void) {
     for(int i = 0; i < 2; i++) {
        
         float actual_v = (float)deltas[i] * TICKS_TO_RAD_PER_S;
+
+        if(fabsf(actual_v) > 0.5f && fabsf(ramp_target[i]) < 0.1f) {
+            actual_v = 0.0f; // Nếu tốc độ thực tế quá lớn (do nhiễu hoặc lỗi đọc), coi như là 0 để tránh sốc PID
+        }
+
         filtered_actual[i] = (FILTER_ALPHA * filtered_actual[i]) + ((1.0f - FILTER_ALPHA) * actual_v);
     }
     

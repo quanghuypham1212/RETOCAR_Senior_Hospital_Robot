@@ -23,6 +23,8 @@ private:
 	Motor motorR;
     PID pid_l, pid_r;
     Kinematics kinematics{0.292f, 0.0425f}; // L=0.3m, R=0.05m (Cần điều chỉnh theo thực tế)
+    uint8_t _startup_counter = 0; // Dùng để đếm số lần gọi update() sau khi khởi động, tránh tính toán PID quá sớm
+    static constexpr uint8_t STARTUP_TICKS = 5; // 5 x 10ms = 50ms, thời gian chờ để encoder ổn định trước khi tính PID
 
     float velocity_target[2] = {0, 0};   // 0: Left, 1: Right
     float ramp_target[2] = {0, 0};
@@ -41,8 +43,10 @@ public:
 		motorR(&htim3, TIM_CHANNEL_1, GPIOB, GPIO_PIN_12, GPIOB, GPIO_PIN_13),
         // Kp, Ki, Kd, Out_Limit (W_MAX), Int_Limit
         
-        pid_l(8.0f, 0.0f, 0.01f, 30.0f, 20.0f),
-        pid_r(8.0f, 0.0f, 0.01f, 30.0f, 20.0f) {}
+        // pid_l(8.0f, 0.0f, 0.3f, 30.0f, 20.0f),
+        // pid_r(8.0f, 0.0f, 0.3f, 30.0f, 20.0f) {}
+        pid_l(0.5f, 1.5f, 0.01f, 30.0f, 20.0f),
+        pid_r(0.5f, 1.5f, 0.01f, 30.0f, 20.0f) {}
         void move(float linear_v, float angular_w);
 
     void setTargetVelocities(float v_left, float v_right);
